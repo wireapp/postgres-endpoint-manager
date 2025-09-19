@@ -6,25 +6,28 @@ TAG ?= latest
 # Platform targets
 PLATFORMS = linux/amd64,linux/arm64
 
-.PHONY: help build-utility build-pg-manager build-all push-utility push-pg-manager push-all test-utility test-pg-manager clean setup-buildx
+.PHONY: help build-pg-manager push-pg-manager test-pg-manager clean setup-buildx
 
 # Default target
 help:
-	@echo "Available targets:"
-
-	@echo "PostgreSQL Endpoint Manager:"
+	@echo "PostgreSQL Endpoint Manager Build Targets:"
+	@echo ""
+	@echo "Build Targets:"
 	@echo "  build-pg-manager       - Build postgres-endpoint-manager image"
 	@echo "  build-pg-manager-multi - Build postgres-endpoint-manager for multiple platforms"
 	@echo "  push-pg-manager        - Push postgres-endpoint-manager image"
+	@echo "  push-pg-manager-multi  - Push postgres-endpoint-manager multi-platform"
+	@echo ""
+	@echo "Test Targets:"
 	@echo "  test-pg-manager        - Test postgres-endpoint-manager image"
 	@echo "  test-pg-manager-custom - Test with custom node configuration"
 	@echo "  test-pg-manager-interactive - Run interactive test mode"
 	@echo ""
-	@echo "Combined:"
-	@echo "  build-all     - Build both images"
-	@echo "  push-all      - Push both images"
-	@echo "  test-all      - Test both images"
+	@echo "Utility Targets:"
 	@echo "  clean         - Clean local images"
+	@echo "  setup-buildx  - Setup buildx for multi-platform builds"
+	@echo "  show-images   - Show current images"
+	@echo "  login         - Login to Docker Hub"
 	@echo ""
 	@echo "Variables:"
 	@echo "  REGISTRY      - Registry namespace (default: $(REGISTRY))"
@@ -103,7 +106,6 @@ test-pg-manager-interactive:
 
 # Clean local images
 clean:
-	docker rmi $(UTILITY_IMAGE):$(TAG) || true
 	docker rmi $(PG_MANAGER_IMAGE):$(TAG) || true
 	@echo "Cleaned local images"
 
@@ -127,8 +129,5 @@ login:
 	docker login
 
 # Quick development workflow
-dev-utility: build-utility test-utility
-	@echo "Development build complete for wire-utility-tool"
-
 dev-pg-manager: build-pg-manager test-pg-manager
 	@echo "Development build complete for postgres-endpoint-manager"
