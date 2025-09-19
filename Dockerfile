@@ -26,19 +26,23 @@ RUN python -m pip install --prefix=/install --upgrade -r requirements.txt
 # sys.path and imports (structlog, psycopg, etc.) fail at runtime.
 ENV PYTHONPATH=/install/lib/python3.12/site-packages:/usr/local/lib/python3.12/site-packages:/app:/app/src
 
+# Test that psycopg can be imported (fail fast if dependencies are missing)
+RUN python -c "import psycopg; print(f'psycopg {psycopg.__version__} imported successfully')"
+
+# Verify that runtime libraries were collected
+RUN ls -la /install/_runtime_libs/ | head -10
+
 # Trim common unnecessary files from the installed packages to reduce final size
 RUN find /install -type d -name 'tests' -exec rm -rf {} + || true
 RUN find /install -type d -name '__pycache__' -exec rm -rf {} + || true
 RUN find /install -name '*.pyc' -delete || true
 RUN rm -rf /install/pip* /install/*.dist-info/*-info || true
 
-# Collect runtime libs (libpq, libssl, libcrypto) into a known location so we
-# can copy them reliably into the final distroless image. Use ldconfig to find
-# the actual installed filenames.
+# Collect runtime libs (libpq, libssl, libcrypto, and other common dependencies)
 RUN mkdir -p /install/_runtime_libs && \
-        for lib in libpq libssl libcrypto; do \
+        for lib in libpq libssl libcrypto libgssapi_krb5 libldap liblber libsasl2; do \
             for f in $(ldconfig -p | awk '/"$lib"/ {print $NF}' | sort -u 2>/dev/null); do \
-                cp -L "$f" /install/_runtime_libs/ || true; \
+                cp -L "$f" /install/_runtime_libs/ 2>/dev/null || true; \
             done || true; \
         done || true
 
@@ -46,35 +50,30 @@ RUN mkdir -p /install/_runtime_libs && \
 COPY src /app/src
 COPY tests /app/tests
 
-## Final stage: minimal runtime using Distroless Python (Debian-based)
-FROM gcr.io/distroless/python3-debian12:nonroot
+## Final stage: minimal runtime using Debian slim (more compatible than distroless)
+FROM python:3.12-slim
+
+# Install only the runtime dependencies we need (no build tools)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    libssl3 \
+    openssl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy installed Python site-packages from the builder (we installed into /install)
-# Do not copy the builder's Python binary to avoid architecture/glibc mismatches.
-COPY --from=builder /install /install
-
-# Copy only the package source so the package CLI can be executed directly.
-# Copy only the `src` package to /app/src
-# to minimize the final image size and avoid copying unrelated scripts.
-COPY src /app/src
-
-# Copy runtime libraries required by psycopg (libpq and common SSL libs)
-# These are installed in the builder (libpq-dev) and must be available to
-# the psycopg binary in the final distroless image.
-## Copy collected runtime libs into /lib in the final image so dynamic linker
-## can find them for psycopg's binary extension.
-COPY --from=builder /install/_runtime_libs /lib/
-
-# Copy only the installed site-packages into the final image's Python site-packages
-# path. Use the expected Python version directory from the builder (3.12).
-# The distroless final image doesn't provide shell utilities, so avoid RUN; COPY
-# will create the target directories when copying the files.
 COPY --from=builder /install/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/
 
-# Ensure Python will search the builder-installed site-packages at runtime.
-# This is low-risk: it points Python at the private /install prefix where pip
-# placed packages during the builder stage, and also includes /usr/local.
-ENV PYTHONPATH=/install/lib/python3.12/site-packages:/usr/local/lib/python3.12/site-packages:/app:/app/src
+# Copy source code
+COPY src /app/src
+
+# Ensure Python will search the installed site-packages at runtime
+ENV PYTHONPATH=/usr/local/lib/python3.12/site-packages:/app:/app/src
+
+# Create a non-root user for security
+RUN useradd --create-home --shell /bin/bash app \
+    && chown -R app:app /app
+USER app
 
 # Entrypoint: run the package CLI module directly
 ENTRYPOINT ["python", "-m", "src.cli"]

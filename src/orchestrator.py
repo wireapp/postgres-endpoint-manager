@@ -6,6 +6,7 @@ from .topology import TopologyVerifier
 from .updater import EndpointUpdater
 from .utils import parse_nodes, make_signature
 from typing import Optional
+import sys
 
 class Orchestrator:
     def __init__(self, cfg=None, kube=None, checker=None, updater=None, logger=None):
@@ -14,10 +15,26 @@ class Orchestrator:
         self.kube = kube or KubeClient(self.cfg.namespace)
         self.checker = checker or PostgresChecker(connect_timeout=self.cfg.pg_connect_timeout)
         self.updater = updater or EndpointUpdater(self.kube)
+
+        # Debug: Log checker psycopg status
+        self.logger.info('PostgresChecker initialized', extra={
+            'psycopg_available': getattr(self.checker, 'psycopg', None) is not None,
+            'checker_type': type(self.checker).__name__
+        })
+
         # Fail fast if psycopg is not available in the runtime image
         if not getattr(self.checker, 'psycopg', None):
             self.logger.error('psycopg (PostgreSQL driver) not available in runtime image')
-            raise Exception('psycopg is required in the runtime image')
+            self.logger.error('Available modules in sys.modules:', extra={'modules': [m for m in sys.modules.keys() if 'psycopg' in m.lower()]})
+            try:
+                import psycopg  # noqa: F401
+                self.logger.info('psycopg can be imported directly')
+            except ImportError as e:
+                self.logger.error('psycopg import failed', extra={'error': str(e), 'error_type': type(e).__name__})
+                self.logger.error('This usually means PostgreSQL client libraries are missing from the runtime image')
+            except Exception as e:
+                self.logger.error('psycopg import failed with unexpected error', extra={'error': str(e), 'error_type': type(e).__name__})
+            raise Exception('psycopg is required in the runtime image. Check that PostgreSQL client libraries are installed in the Docker image.')
 
     def run(self) -> bool:
         # discover nodes from env or stored annotation

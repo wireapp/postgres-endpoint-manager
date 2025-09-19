@@ -76,7 +76,7 @@ jobs:
           pip install safety
 
           echo "Scanning requirements.txt for vulnerabilities..."
-          safety check --file requirements.txt --output json || true
+          safety scan --file requirements.txt --output json || true
 
       - name: Build test image (single platform)
         uses: docker/build-push-action@v5
