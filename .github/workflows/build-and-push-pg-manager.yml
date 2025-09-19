@@ -55,8 +55,7 @@ jobs:
         with:
           registry: quay.io
           username: ${{ secrets.QUAY_USERNAME }}
-          password: ${{ secrets.QUAY_PASSWORD }}
-        # Note: Configure QUAY_USERNAME and QUAY_PASSWORD secrets in repository settings
+          password: ${{ secrets.QUAY_ROBOT_TOKEN }}
 
       - name: Extract metadata
         id: meta
