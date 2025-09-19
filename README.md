@@ -40,6 +40,10 @@ pip install -r requirements.txt
 python -m pytest tests/
 ```
 
+### Staying Updated
+
+For the latest changes and release notes, see the [Changelog](CHANGELOG.md).
+
 ## Configuration
 
 The application requires the following environment variables:
@@ -122,6 +126,7 @@ For a detailed visual representation of the application flow, see the [Communica
 - **[Container Entrypoint](docs/entrypoint.md)** - Detailed information about the container structure, entrypoint flow, and package organization
 - **[Communication Flow](docs/communicationflow.mmd)** - Mermaid diagram showing the complete application flow from startup to endpoint updates
 - **[CI/CD Pipeline](docs/PG_MANAGER_CI.md)** - Comprehensive guide to the CI pipeline, runtime vs test images, and debugging workflows
+- **[Changelog](CHANGELOG.md)** - Complete history of changes and releases
 
 ## License
 
