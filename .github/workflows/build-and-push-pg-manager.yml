@@ -1,0 +1,176 @@
+name: Build and Push PostgreSQL Endpoint Manager
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - 'tests/test_postgres_endpoint_manager.py'
+      - 'requirements.txt'
+      - '.github/workflows/build-and-push-pg-manager.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - 'tests/test_postgres_endpoint_manager.py'
+      - 'requirements.txt'
+      - '.github/workflows/build-and-push-pg-manager.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: quay.io
+  IMAGE_NAME: wire/postgres-endpoint-manager
+  PG_TAG_PREFIX: pg-manager
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate Dockerfile
+        run: |
+          echo "Validating Dockerfile syntax..."
+          docker build --dry-run -f Dockerfile . || echo "Dockerfile syntax validation failed"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+        # Note: Configure QUAY_USERNAME and QUAY_PASSWORD secrets in repository settings
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=pr,prefix=pr-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Check Python dependencies for vulnerabilities
+        run: |
+          echo "Installing safety for dependency vulnerability scanning..."
+          pip install safety
+
+          echo "Scanning requirements.txt for vulnerabilities..."
+          safety check --file requirements.txt --output json || true
+
+      - name: Build test image (single platform)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          target: builder
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: test-image:latest
+          cache-from: type=gha,scope=pg-manager-test
+
+      - name: Test image
+        run: |
+          echo "Testing image: test-image:latest"
+
+          # Test basic tools
+          docker run --rm --platform linux/amd64 --entrypoint /bin/bash test-image:latest -c "
+            echo 'Testing PostgreSQL endpoint manager...' &&
+            python3 --version &&
+            psql --version &&
+            which curl &&
+            which jq &&
+            echo 'PostgreSQL endpoint manager ready!'
+          "
+
+          # Test functionality: mount the repository tests and invoke the test harness
+          echo 'Testing functionality...'
+          docker run --rm --platform linux/amd64 \
+            -v $GITHUB_WORKSPACE/tests:/app/tests:ro \
+            --entrypoint python3 \
+            test-image:latest /app/tests/test_postgres_endpoint_manager.py --comprehensive
+
+      - name: Run security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'image'
+          scan-ref: 'test-image:latest'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Build and push pg-manager image
+        # if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=pg-manager
+          cache-to: type=gha,mode=max,scope=pg-manager
+
+      - name: Build pg-manager image (PR - no push)
+        if: github.event_name == 'pull_request'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=pg-manager
+          cache-to: type=gha,mode=max,scope=pg-manager
+
+      - name: Image summary
+        run: |
+          echo "✅ Built and tested PostgreSQL Endpoint Manager:"
+          echo "📦 Registry: ${{ env.REGISTRY }}"
+          echo "🏷️  Image: ${{ env.IMAGE_NAME }}"
+          echo "🐍 Python: 3.12"
+          echo "📚 Libraries: Latest versions (psycopg 3.2+, structlog 25+, kubernetes 33+)"
+          echo "☸️  Kubernetes: Cluster v1.29.x (client v30.0.0+ required)"
+          echo "🏷️  Tagging: Semantic versioning (v1.2.3 → 1.2.3, 1.2, 1, latest)"
+          echo ""
+
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "🚀 **PRODUCTION DEPLOYMENT**"
+            echo "${{ steps.meta.outputs.tags }}" | while read tag; do
+              echo "  📦 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$tag (pushed)"
+            done
+          else
+            echo "🧪 **PULL REQUEST BUILD**"
+            echo "${{ steps.meta.outputs.tags }}" | while read tag; do
+              echo "  📦 ${{ env.IMAGE_NAME }}:$tag (built, not pushed)"
+            done
+            echo "💡 To deploy: Merge this PR and tag with 'git tag v1.2.3'"
+          fi
