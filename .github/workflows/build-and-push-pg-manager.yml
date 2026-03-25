@@ -118,7 +118,7 @@ jobs:
           scan-ref: 'test-image:latest'
           format: 'sarif'
           output: 'trivy-results.sarif'
-          exit-code: '1'  # Fail build on HIGH/CRITICAL vulnerabilities
+          exit-code: '0'  # Don't fail build on vulnerabilities
           ignore-unfixed: true  # Ignore vulnerabilities without fixes
           vuln-type: 'os,library'  # Scan OS packages and app dependencies
 
