@@ -42,7 +42,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Validate Dockerfile
         run: |
@@ -50,10 +50,10 @@ jobs:
           docker build --dry-run -f Dockerfile . || echo "Dockerfile syntax validation failed"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Login to Quay.io
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: quay.io
           username: ${{ secrets.QUAY_USERNAME }}
@@ -61,7 +61,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -80,7 +80,7 @@ jobs:
           safety scan --file requirements.txt --output json || true
 
       - name: Build test image (single platform)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: ./Dockerfile
@@ -108,12 +108,12 @@ jobs:
           # Test functionality: mount the repository tests and invoke the test harness
           echo 'Testing functionality...'
           docker run --rm --platform linux/amd64 \
-            -v $GITHUB_WORKSPACE/tests:/app/tests:ro \
+            -v "$GITHUB_WORKSPACE/tests:/app/tests:ro" \
             --entrypoint python3 \
             test-image:latest /app/tests/test_postgres_endpoint_manager.py --comprehensive
 
       - name: Run security scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: 'image'
           scan-ref: 'test-image:latest'
@@ -124,14 +124,14 @@ jobs:
           vuln-type: 'os,library'  # Scan OS packages and app dependencies
 
       - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@42947a340483f03ba47bb1a039b2c519aab3df85 # v3.37.8
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
 
       - name: Build and push pg-manager image
         # if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: ./Dockerfile
@@ -144,7 +144,7 @@ jobs:
 
       - name: Build pg-manager image (PR - no push)
         if: github.event_name == 'pull_request'
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: ./Dockerfile
@@ -156,68 +156,82 @@ jobs:
           cache-to: type=gha,mode=max,scope=pg-manager
 
       - name: Image summary
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           echo "✅ Built and tested PostgreSQL Endpoint Manager:"
-          echo "📦 Registry: ${{ env.REGISTRY }}"
-          echo "🏷️  Image: ${{ env.IMAGE_NAME }}"
+          echo "📦 Registry: $REGISTRY"
+          echo "🏷️  Image: $IMAGE_NAME"
           echo "🐍 Python: 3.12"
           echo "📚 Libraries: Latest versions (psycopg 3.2+, structlog 25+, kubernetes 33+)"
           echo "☸️  Kubernetes: Cluster v1.29.x (client v30.0.0+ required)"
           echo "🏷️  Tagging: Semantic versioning (v1.2.3 → 1.2.3, 1.2, 1, latest)"
           echo ""
 
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
+          if [ "$EVENT_NAME" != "pull_request" ]; then
             echo "🚀 **PRODUCTION DEPLOYMENT**"
-            echo "${{ steps.meta.outputs.tags }}" | while read tag; do
-              echo "  📦 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$tag (pushed)"
+            echo "$TAGS" | while read -r tag; do
+              echo "  📦 $tag (pushed)"
             done
             echo ""
             echo "🔗 **Pull Commands:**"
-            echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-            echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$(echo '${{ steps.meta.outputs.tags }}' | head -1)"
+            echo "docker pull $REGISTRY/$IMAGE_NAME:latest"
+            echo "docker pull $(echo "$TAGS" | head -1)"
           else
             echo "🧪 **PULL REQUEST BUILD**"
-            echo "${{ steps.meta.outputs.tags }}" | while read tag; do
-              echo "  📦 ${{ env.IMAGE_NAME }}:$tag (built, not pushed)"
+            echo "$TAGS" | while read -r tag; do
+              echo "  📦 $tag (built, not pushed)"
             done
             echo "💡 To deploy: Merge this PR and tag with 'git tag v1.2.3'"
           fi
 
       - name: Generate deployment summary
         if: github.event_name != 'pull_request'
+        env:
+          REPO: ${{ github.repository }}
+          WORKFLOW: ${{ github.workflow }}
+          RUN_ID: ${{ github.run_id }}
+          ACTOR: ${{ github.actor }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+          SERVER_URL: ${{ github.server_url }}
+          SHA: ${{ github.sha }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Workflow:** ${{ github.workflow }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📦 Images Deployed" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.meta.outputs.tags }}" | while read tag; do
-            echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$tag" >> $GITHUB_STEP_SUMMARY
-          done
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🔗 Quick Pull" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### ✅ Security Status" >> $GITHUB_STEP_SUMMARY
-          echo "- Trivy security scan: ✅ Completed" >> $GITHUB_STEP_SUMMARY
-          echo "- Dependency scan: ✅ Completed" >> $GITHUB_STEP_SUMMARY
-          echo "- View results: [Security Tab](${{ github.server_url }}/${{ github.repository }}/security/code-scanning)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📊 Metrics" >> $GITHUB_STEP_SUMMARY
-          echo "- Build time: ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## 🚀 Deployment Summary"
+            echo ""
+            echo "**Repository:** $REPO"
+            echo "**Workflow:** $WORKFLOW"
+            echo "**Run:** $RUN_ID"
+            echo "**Triggered by:** $ACTOR"
+            echo ""
+            echo "### 📦 Images Deployed"
+            echo "\`\`\`"
+            echo "$TAGS" | while read -r tag; do
+              echo "$tag"
+            done
+            echo "\`\`\`"
+            echo ""
+            echo "### 🔗 Quick Pull"
+            echo "\`\`\`bash"
+            echo "docker pull $REGISTRY/$IMAGE_NAME:latest"
+            echo "\`\`\`"
+            echo ""
+            echo "### ✅ Security Status"
+            echo "- Trivy security scan: ✅ Completed"
+            echo "- Dependency scan: ✅ Completed"
+            echo "- View results: [Security Tab]($SERVER_URL/$REPO/security/code-scanning)"
+            echo ""
+            echo "### 📊 Metrics"
+            echo "- Run ID: $RUN_ID"
+            echo "- Commit: $SHA"
+            echo "- Branch: $REF_NAME"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment PR with build results
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
             const marker = '## 🧪 Build Results';
@@ -239,6 +253,12 @@ jobs:
               }
             }
 
+            // Read context data from the environment rather than interpolating
+            // workflow expressions into this script (script injection, WPB-27094).
+            const registry = process.env.REGISTRY;
+            const imageName = process.env.IMAGE_NAME;
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+
             const body = `## 🧪 Build Results
 
             **PostgreSQL Endpoint Manager** build completed successfully!
@@ -250,7 +270,7 @@ jobs:
 
             ### 📦 Image Built
             \`\`\`
-            ${{ env.IMAGE_NAME }}:pr-${{ github.event.number }}
+            ${imageName}:pr-${context.issue.number}
             \`\`\`
 
             ### 🔒 Security Status
@@ -261,10 +281,10 @@ jobs:
             This PR is ready to merge. After merging:
             1. Create a version tag: \`git tag v1.0.0\`
             2. Push the tag: \`git push origin v1.0.0\`
-            3. Images will be deployed to: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`
+            3. Images will be deployed to: \`${registry}/${imageName}\`
 
             ---
-            *Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}*`;
+            *Workflow run: ${runUrl}*`;
 
             github.rest.issues.createComment({
               issue_number: context.issue.number,
