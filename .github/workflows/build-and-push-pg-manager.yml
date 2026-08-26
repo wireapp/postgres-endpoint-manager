@@ -172,16 +172,16 @@ jobs:
           if [ "$EVENT_NAME" != "pull_request" ]; then
             echo "🚀 **PRODUCTION DEPLOYMENT**"
             echo "$TAGS" | while read -r tag; do
-              echo "  📦 $REGISTRY/$IMAGE_NAME:$tag (pushed)"
+              echo "  📦 $tag (pushed)"
             done
             echo ""
             echo "🔗 **Pull Commands:**"
             echo "docker pull $REGISTRY/$IMAGE_NAME:latest"
-            echo "docker pull $REGISTRY/$IMAGE_NAME:$(echo "$TAGS" | head -1)"
+            echo "docker pull $(echo "$TAGS" | head -1)"
           else
             echo "🧪 **PULL REQUEST BUILD**"
             echo "$TAGS" | while read -r tag; do
-              echo "  📦 $IMAGE_NAME:$tag (built, not pushed)"
+              echo "  📦 $tag (built, not pushed)"
             done
             echo "💡 To deploy: Merge this PR and tag with 'git tag v1.2.3'"
           fi
@@ -198,34 +198,36 @@ jobs:
           SHA: ${{ github.sha }}
           REF_NAME: ${{ github.ref_name }}
         run: |
-          echo "## 🚀 Deployment Summary" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Repository:** $REPO" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Workflow:** $WORKFLOW" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Run:** $RUN_ID" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Triggered by:** $ACTOR" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "### 📦 Images Deployed" >> "$GITHUB_STEP_SUMMARY"
-          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "$TAGS" | while read -r tag; do
-            echo "$REGISTRY/$IMAGE_NAME:$tag" >> "$GITHUB_STEP_SUMMARY"
-          done
-          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "### 🔗 Quick Pull" >> "$GITHUB_STEP_SUMMARY"
-          echo "\`\`\`bash" >> "$GITHUB_STEP_SUMMARY"
-          echo "docker pull $REGISTRY/$IMAGE_NAME:latest" >> "$GITHUB_STEP_SUMMARY"
-          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "### ✅ Security Status" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Trivy security scan: ✅ Completed" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Dependency scan: ✅ Completed" >> "$GITHUB_STEP_SUMMARY"
-          echo "- View results: [Security Tab]($SERVER_URL/$REPO/security/code-scanning)" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "### 📊 Metrics" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Build time: $RUN_ID" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Commit: $SHA" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Branch: $REF_NAME" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## 🚀 Deployment Summary"
+            echo ""
+            echo "**Repository:** $REPO"
+            echo "**Workflow:** $WORKFLOW"
+            echo "**Run:** $RUN_ID"
+            echo "**Triggered by:** $ACTOR"
+            echo ""
+            echo "### 📦 Images Deployed"
+            echo "\`\`\`"
+            echo "$TAGS" | while read -r tag; do
+              echo "$tag"
+            done
+            echo "\`\`\`"
+            echo ""
+            echo "### 🔗 Quick Pull"
+            echo "\`\`\`bash"
+            echo "docker pull $REGISTRY/$IMAGE_NAME:latest"
+            echo "\`\`\`"
+            echo ""
+            echo "### ✅ Security Status"
+            echo "- Trivy security scan: ✅ Completed"
+            echo "- Dependency scan: ✅ Completed"
+            echo "- View results: [Security Tab]($SERVER_URL/$REPO/security/code-scanning)"
+            echo ""
+            echo "### 📊 Metrics"
+            echo "- Run ID: $RUN_ID"
+            echo "- Commit: $SHA"
+            echo "- Branch: $REF_NAME"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment PR with build results
         if: github.event_name == 'pull_request'
