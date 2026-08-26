@@ -80,7 +80,7 @@ jobs:
           safety scan --file requirements.txt --output json || true
 
       - name: Build test image (single platform)
-        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: ./Dockerfile
@@ -108,7 +108,7 @@ jobs:
           # Test functionality: mount the repository tests and invoke the test harness
           echo 'Testing functionality...'
           docker run --rm --platform linux/amd64 \
-            -v $GITHUB_WORKSPACE/tests:/app/tests:ro \
+            -v "$GITHUB_WORKSPACE/tests:/app/tests:ro" \
             --entrypoint python3 \
             test-image:latest /app/tests/test_postgres_endpoint_manager.py --comprehensive
 
@@ -131,7 +131,7 @@ jobs:
 
       - name: Build and push pg-manager image
         # if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: ./Dockerfile
@@ -144,7 +144,7 @@ jobs:
 
       - name: Build pg-manager image (PR - no push)
         if: github.event_name == 'pull_request'
-        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: ./Dockerfile
